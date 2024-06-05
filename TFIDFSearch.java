@@ -7,14 +7,27 @@ public class TFIDFSearch {
     public static final String DESTINATION = "output.txt";
 
     public static String removeDuplicateTerms(String input) {
-        Set<String> uniqueTerms = new LinkedHashSet<>(Arrays.asList(input.split("\\s+")));
-        return String.join(" ", uniqueTerms);
+        String line = input.replaceAll("AND ", "").replaceAll("OR ", "");
+        String[] terms = line.split("\\s+");
+
+        Set<String> contains = new HashSet<>();
+        StringBuilder result = new StringBuilder();
+
+        for (String term : terms) {
+            if (!contains.contains(term)) {
+                contains.add(term);
+                result.append(term);
+                result.append(" ");
+            }
+        }
+
+        return result.toString().trim();
     }
 
-    public static List<String> readTestCase(String fileName) {
+    public static List<String> readTestCase(String path) {
         List<String> tc = new ArrayList<>();
         try {
-            BufferedReader br = new BufferedReader(new FileReader(fileName));
+            BufferedReader br = new BufferedReader(new FileReader(path));
             String line;
 
             while ((line = br.readLine()) != null) {
@@ -30,29 +43,36 @@ public class TFIDFSearch {
     }
 
     public List<Integer> processQuery(Indexer idx, String queryLine, int n) {
-
-        String[] terms = queryLine.split("\\s");
         Set<Integer> doc_id_set;
+        String toBeQueriedStr = removeDuplicateTerms(queryLine);
 
         if (queryLine.contains("AND")) {
 
+            String[] terms = toBeQueriedStr.split("\\s");
             doc_id_set = processANDQuery(idx, terms);
 
         } else if (queryLine.contains("OR")) {
 
+            String[] terms = toBeQueriedStr.split("\\s");
             doc_id_set = processORQuery(idx, terms);
 
         } else {
 
-            doc_id_set = processSingleQuery(idx, terms[0]);
+            doc_id_set = processSingleQuery(idx, toBeQueriedStr);
 
         }
 
         List<Integer> result = new ArrayList<>(doc_id_set);
 
         result.sort((d1, d2) -> {
-            double tfidfDiff = Double.compare(getTFIDFSum(idx, queryLine, d2), getTFIDFSum(idx, queryLine, d1));
-            return (tfidfDiff != 0) ? (int) tfidfDiff : Integer.compare(d1, d2);
+            double val1 = getTFIDFSum(idx, toBeQueriedStr, d1);
+            double val2 = getTFIDFSum(idx, toBeQueriedStr, d2);
+            int cmp = Double.compare(val2, val1);
+            if (cmp == 0) { // val1 == val2
+                return Integer.compare(d1, d2);
+            } else {
+                return cmp;
+            }
         });
 
         while (result.size() < n) {
@@ -64,11 +84,15 @@ public class TFIDFSearch {
 
     private Set<Integer> processANDQuery(Indexer idx, String[] terms) {
 
-        Set<Integer> resultSet = new HashSet<>(get_doc_id_set(idx, terms[0]));
-        for (int i = 2; i < terms.length; i += 2) {
+        Set<Integer> buffer = get_doc_id_set(idx, terms[0]);
+        if (terms.length == 1) {
+            return buffer;
+        }
 
-            resultSet.retainAll(get_doc_id_set(idx, terms[i]));
-
+        Set<Integer> resultSet = new HashSet<>(buffer);
+        for (int i = 1; i < terms.length; i += 1) {
+            buffer = get_doc_id_set(idx, terms[i]);
+            resultSet.retainAll(buffer);
         }
 
         return resultSet;
@@ -76,11 +100,15 @@ public class TFIDFSearch {
 
     private Set<Integer> processORQuery(Indexer idx, String[] terms) {
 
-        Set<Integer> resultSet = new HashSet<>(get_doc_id_set(idx, terms[0]));
-        for (int i = 2; i < terms.length; i += 2) {
+        Set<Integer> buffer = get_doc_id_set(idx, terms[0]);
+        if (terms.length == 1) {
+            return buffer;
+        }
 
-            resultSet.addAll(get_doc_id_set(idx, terms[i]));
-
+        Set<Integer> resultSet = new HashSet<>(buffer);
+        for (int i = 1; i < terms.length; i += 1) {
+            buffer = get_doc_id_set(idx, terms[i]);
+            resultSet.addAll(buffer);
         }
 
         return resultSet;
@@ -104,7 +132,7 @@ public class TFIDFSearch {
         String[] terms = queryLine.split("\\s");
         double sum = 0.0;
 
-        for (int i = 0; i < terms.length; i += 2) {
+        for (int i = 0; i < terms.length; i++) {
             sum += idx.tfidf(terms[i], docId);
         }
 
@@ -130,7 +158,7 @@ public class TFIDFSearch {
     public static void main(String[] args) {
 
         String serName = args[0];
-        String testcase = args[1];
+        String tcPath = args[1];
 
         // deserialize
         Indexer deserializedIdx = null;
@@ -150,7 +178,7 @@ public class TFIDFSearch {
         }
 
         // read the tc
-        List<String> tcContent = readTestCase(testcase);
+        List<String> tcContent = readTestCase(tcPath);
         int num = Integer.parseInt(tcContent.get(0));
         tcContent.remove(0);
 
